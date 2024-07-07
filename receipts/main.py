@@ -20,19 +20,83 @@ with open(api_key_file, 'r') as file:
 WAVIOT_T1_URL = "https://lk.waviot.ru/api.data/get_modem_channel_values/?channel=electro_ac_p_lsum_t1&key=" + API_KEY + "&modem_id="
 WAVIOT_T2_URL = "https://lk.waviot.ru/api.data/get_modem_channel_values/?channel=electro_ac_p_lsum_t2&key=" + API_KEY + "&modem_id="
 
-async def fetch(session, url):
-    async with session.get(url) as response:
-        return await response.json()
+def save_data_to_file(jsondata, filename):
+    with open(filename, 'w', encoding='utf-8') as file:
+        json.dump(jsondata, file, ensure_ascii=False, indent=4)
+
+# Функция для чтения списка из файла
+def load_data_from_file(filename):
+    with open(filename, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+def save_all_data_to_files():
+    T1_registrators_data_file = os.path.join(os.path.dirname(__file__), 'T1_registrators_data.json')
+    save_data_to_file(T1_registrators_data, T1_registrators_data_file)
+    T2_registrators_data_file = os.path.join(os.path.dirname(__file__), 'T2_registrators_data.json')
+    save_data_to_file(T2_registrators_data, T2_registrators_data_file)
+    rows_data_file = os.path.join(os.path.dirname(__file__), 'rows.json')
+    save_data_to_file(rows, rows_data_file)
+
+def load_all_data_from_files():
+    global T1_registrators_data, T2_registrators_data, rows, T1_lost, T2_lost
+    T1_registrators_data_file = os.path.join(os.path.dirname(__file__), 'T1_registrators_data.json')
+    T1_registrators_data = load_data_from_file(T1_registrators_data_file)
+    T2_registrators_data_file = os.path.join(os.path.dirname(__file__), 'T2_registrators_data.json')
+    T2_registrators_data = load_data_from_file(T2_registrators_data_file)
+    starttimestamp = '1719521000'
+    finishtimestamp = '1719781200'
+    T1_personal_registrators_sum=0
+    T2_personal_registrators_sum=0
+    T1_main_registrator=0
+    T2_main_registrator=0
+    for row in rows:
+        raw_data = T1_registrators_data[int (row['num'])]
+        row['T1_start'] = float(raw_data["values"].get(starttimestamp)) if "values" in raw_data else None
+        row['T1_finish'] = float(raw_data["values"].get(finishtimestamp)) if "values" in raw_data else None
+        row['T1_consumption'] = round(row['T1_finish'] - row['T1_start'],3)
+        raw_data = T2_registrators_data[int (row['num'])]
+        row['T2_start'] = float(raw_data["values"].get(starttimestamp)) if "values" in raw_data else None
+        row['T2_finish'] = float(raw_data["values"].get(finishtimestamp)) if "values" in raw_data else None
+        row['T2_consumption'] = round(row['T2_finish'] - row['T2_start'],3)
+        if row['address']=="Общий":
+            row['T1_consumption'] = row['T1_consumption'] * 50
+            row['T2_consumption'] = row['T2_consumption'] * 50
+            T1_main_registrator=row['T1_consumption']
+            T2_main_registrator=row['T2_consumption']
+        else:
+            T1_personal_registrators_sum += row['T1_consumption']
+            T2_personal_registrators_sum += row['T2_consumption']
+        table.update()
+    
+    T1_lost = round((T1_main_registrator-T1_personal_registrators_sum)*100/T1_personal_registrators_sum, 3)
+    T2_lost = round((T2_main_registrator-T2_personal_registrators_sum)*100/T2_personal_registrators_sum, 3)
+
+    for row in rows:
+        if row['address']=="Общий":
+            row['sum']=round(row['T1_consumption']*T1_price+row['T2_consumption']*T2_price, 3)
+        else:
+            row['sum']=round((row['T1_consumption']+row['T1_consumption']*T1_lost)*T1_price+(row['T2_consumption']+row['T2_consumption']*T2_lost)*T2_price, 3)
+
+    table.update()
+    losts_text.set_content('Потери T1:  **'+str(T1_lost)+'**        |        Потери T2:  **'+str(T2_lost)+'**')
+
+async def fetch(session, url, sem):
+    async with sem:
+        async with session.get(url) as response:
+            return await response.json()
 
 async def fetch_all(urls):
+    sem = asyncio.Semaphore(1)  # Ограничение на 1 одновременный запрос
     async with aiohttp.ClientSession() as session:
-        tasks = [fetch(session, url) for url in urls]
+        tasks = [fetch(session, url, sem) for url in urls]
         results = await asyncio.gather(*tasks)
         return results
 
 async def async_task():
     global T1_registrators_data, T2_registrators_data, rows, T1_lost, T2_lost
-    ui.notify('Получение данных из личного кабинета WAVIoT')
+    notification = ui.notification(timeout=None)
+    notification.message = f'Получение данных из личного кабинета WAVIoT'
+    notification.spinner = True
     T1_registrators_data = await fetch_all(T1_urls)
     T2_registrators_data = await fetch_all(T2_urls)
     
@@ -59,6 +123,7 @@ async def async_task():
         else:
             T1_personal_registrators_sum += row['T1_consumption']
             T2_personal_registrators_sum += row['T2_consumption']
+        table.update()
     
     T1_lost = round((T1_main_registrator-T1_personal_registrators_sum)*100/T1_personal_registrators_sum, 3)
     T2_lost = round((T2_main_registrator-T2_personal_registrators_sum)*100/T2_personal_registrators_sum, 3)
@@ -71,6 +136,7 @@ async def async_task():
 
     table.update()
     losts_text.set_content('Потери T1:  **'+str(T1_lost)+'**        |        Потери T2:  **'+str(T2_lost)+'**')
+    notification.dismiss()
     ui.notify('Получение данных из личного кабинета WAVIoT окончено')
 
 # Получаем путь к файлу registrators.csv 
@@ -114,6 +180,8 @@ T1_lost = 0.0
 T2_lost = 0.0
 
 ui.button('Получить данные WAVIoT', on_click=async_task)
+ui.button('Сохранить данные в файл', on_click=save_all_data_to_files)
+ui.button('Получить данные из файла', on_click=load_all_data_from_files)
 
 table = ui.table(columns=columns, rows=rows, row_key='name')
 
