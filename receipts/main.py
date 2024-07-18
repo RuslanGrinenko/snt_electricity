@@ -152,10 +152,14 @@ T1_urls = []
 T2_urls = []
 rows = []
 i=0
+starttimestamp = '1719522000'
+start = '&from='+starttimestamp
+finishtimestamp = '1719781200'
+finish = '&to='+finishtimestamp
 for row in data:
     address, registrator = row
     registrators.append((address, registrator))
-    T1_urls.append(WAVIOT_T1_URL + registrator)
+    T1_urls.append(WAVIOT_T1_URL + registrator+start+finish)
     T2_urls.append(WAVIOT_T2_URL + registrator)
     rows.append({'num':str(i), 'address':address, 'registrator':registrator})
     i+=1
