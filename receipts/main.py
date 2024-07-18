@@ -14,6 +14,18 @@ T2_price = 3.09
 # API_KEY="Нужно посмотреть на портале waviot и сохранить в файл api.key"
 # Получаем значение API_KEY из файла
 api_key_file = os.path.join(os.path.dirname(__file__), 'api.key')
+
+# Глобальные переменные для хранения начальной и конечной даты в виде timestamp
+# Получаем текущую дату и время
+current_date = datetime.datetime.now()
+# Создаем объект datetime для текущей даты минус 30 дней
+thirty_days_ago = current_date - datetime.timedelta(days=30)
+# Преобразуем объекты datetime в timestamp
+startdate = str(int(current_date.timestamp()))
+enddate = str(int(thirty_days_ago.timestamp()))
+#startdate = None
+#enddate = None
+
 with open(api_key_file, 'r') as file:
     API_KEY = file.read().strip()
 
@@ -139,6 +151,15 @@ async def async_task():
     notification.dismiss()
     ui.notify('Получение данных из личного кабинета WAVIoT окончено')
 
+# Функция для обновления глобальных переменных startdate и enddate
+def update_dates(date_range):
+    global startdate, enddate
+    start, end = date_range['from'], date_range['to']
+    if start and end:
+        startdate = str(int(datetime.datetime.fromisoformat(start).replace(hour=0, minute=0, second=0).timestamp()))
+        enddate = str(int(datetime.datetime.fromisoformat(end).replace(hour=0, minute=0, second=0).timestamp()))
+        print(f"Начальная дата: {startdate}, Конечная дата: {enddate}")
+
 # Получаем путь к файлу registrators.csv 
 registrators_file = os.path.join(os.path.dirname(__file__), 'registrators.csv')
 with open(registrators_file, mode='r', encoding='utf-8') as file:
@@ -152,15 +173,15 @@ T1_urls = []
 T2_urls = []
 rows = []
 i=0
-starttimestamp = '1719522000'
-start = '&from='+starttimestamp
-finishtimestamp = '1719781200'
-finish = '&to='+finishtimestamp
+#starttimestamp = '1719522000'
+start = '&from='+startdate
+#finishtimestamp = '1719781200'
+finish = '&to='+enddate
 for row in data:
     address, registrator = row
     registrators.append((address, registrator))
     T1_urls.append(WAVIOT_T1_URL + registrator+start+finish)
-    T2_urls.append(WAVIOT_T2_URL + registrator)
+    T2_urls.append(WAVIOT_T2_URL + registrator+start+finish)
     rows.append({'num':str(i), 'address':address, 'registrator':registrator})
     i+=1
 
@@ -183,12 +204,21 @@ columns = [
 T1_lost = 0.0
 T2_lost = 0.0
 
-ui.button('Получить данные WAVIoT', on_click=async_task)
-ui.button('Сохранить данные в файл', on_click=save_all_data_to_files)
-ui.button('Получить данные из файла', on_click=load_all_data_from_files)
+with ui.row():
+    ui.button('Получить данные WAVIoT', on_click=async_task)
+    ui.button('Сохранить данные в файл', on_click=save_all_data_to_files)
+    ui.button('Получить данные из файла', on_click=load_all_data_from_files)
+
+
+# Поля для выбора начальной и конечной даты
+with ui.row():
+    date_range_picker = ui.date({'from': '2023-01-01', 'to': '2023-01-05'}, on_change=lambda e: update_dates(date_range_picker.value)).props('range')
+    date_range_picker.on('update', lambda e: update_dates(date_range_picker.value)) 
 
 table = ui.table(columns=columns, rows=rows, row_key='name')
 
-losts_text = ui.markdown('Потери T1:  **'+str(T1_lost)+'**        |        Потери T2:  **'+str(T2_lost)+'**')
+with ui.row():
+    ui.markdown('Потери T1:  **'+str(T1_lost)+'**')
+    ui.markdown('Потери T2:  **'+str(T2_lost)+'**')     
 
 ui.run()
