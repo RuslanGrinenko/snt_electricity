@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Квитанции за электроэнергию</title>
+    <style>
+        .general { background-color: #ffe4e1; }
+        table { border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        input[type="number"] { width: 80px; }
+    </style>
+</head>
+<body>
+    <h1>Расчёт квитанций за электроэнергию</h1>
+
+    <form method="POST">
+        <div style="margin-bottom: 15px;">
+            <label>Тариф день (руб/кВт·ч):
+                <input type="number" step="0.01" name="tax_day"
+                       value="{{ tax_day|default(6.28, true) }}">
+            </label>
+            <label style="margin-left: 20px;">Тариф ночь (руб/кВт·ч):
+                <input type="number" step="0.01" name="tax_night"
+                       value="{{ tax_night|default(3.4, true) }}">
+            </label>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label>Период с:
+                <input type="date" name="start_date"
+                       value="{{ start_date|default('') }}" required>
+            </label>
+            <label style="margin-left: 20px;">по:
+                <input type="date" name="end_date"
+                       value="{{ end_date|default('') }}" required>
+            </label>
+        </div>
+
+        <button type="submit" style="padding: 8px 20px;">Рассчитать</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>Локация</th>
+            <th>ID счётчика</th>
+            <th>E-mail</th>
+            <th>T1 начальное</th>
+            <th>T1 конечное</th>
+            <th>T1 расход</th>
+            <th>T2 начальное</th>
+            <th>T2 конечное</th>
+            <th>T2 расход</th>
+            <th>Сумма</th>
+            <th>Сумма с потерями</th>
+        </tr>
+        {% for counter in recipies %}
+        <tr class="{{ 'general' if counter.LOC == 'Общий' else '' }}">
+            <td><input type="hidden" name="loc_{{ counter.MODEM_ID }}" value="{{ counter.LOC }}">{{ counter.LOC }}</td>
+            <td>{{ counter.MODEM_ID }}</td>
+            <td><input type="hidden" name="email_{{ counter.MODEM_ID }}" value="{{ counter.E_MAIL }}">{{ counter.E_MAIL }}</td>
+            <td><input type="hidden" name="t1_from_{{ counter.MODEM_ID }}" value="{{ counter.T1_FROM | round(2) }}">{{ "%.2f"|format(counter.T1_FROM | default(0)) }}</td>
+            <td><input type="hidden" name="t1_to_{{ counter.MODEM_ID }}" value="{{ counter.T1_TO | round(2) }}">{{ "%.2f"|format(counter.T1_TO | default(0)) }}</td>
+            <td><input type="hidden" name="t1_cons_{{ counter.MODEM_ID }}" value="{{ counter.T1_CONS | round(2) }}">{{ "%.2f"|format(counter.T1_CONS | default(0)) }}</td>
+            <td><input type="hidden" name="t2_from_{{ counter.MODEM_ID }}" value="{{ counter.T2_FROM | round(2) }}">{{ "%.2f"|format(counter.T2_FROM | default(0)) }}</td>
+            <td><input type="hidden" name="t2_to_{{ counter.MODEM_ID }}" value="{{ counter.T2_TO | round(2) }}">{{ "%.2f"|format(counter.T2_TO | default(0)) }}</td>
+            <td><input type="hidden" name="t2_cons_{{ counter.MODEM_ID }}" value="{{ counter.T2_CONS | round(2) }}">{{ "%.2f"|format(counter.T2_CONS | default(0)) }}</td>
+            <td><input type="hidden" name="summ_{{ counter.MODEM_ID }}" value="{{ counter.SUMM | round(2) }}">{{ "%.2f"|format(counter.SUMM | default(0)) }}</td>
+            <td><input type="hidden" name="summ_loss_{{ counter.MODEM_ID }}" value="{{ counter.SUMM_LOSS | round(2) }}">{{ "%.2f"|format(counter.SUMM_LOSS | default(0)) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div style="margin: 20px 0;">
+        <strong>Потери в сетях:</strong><br>
+        День: {{ "%.2f"|format(loss_day | default(0)) }}%<br>
+        Ночь: {{ "%.2f"|format(loss_night | default(0)) }}%
+    </div>
+
+    <div>
+        <form method="POST" action="/save" enctype="multipart/form-data">
+            <input type="hidden" name="order"
+           value="{{ recipies|map(attribute='MODEM_ID')|join(',') }}">
+            <input type="hidden" name="start_date" value="{{ start_date|default('') }}">
+            <input type="hidden" name="end_date" value="{{ end_date|default('') }}">
+            <input type="hidden" name="tax_day" value="{{ tax_day|default('') }}">
+            <input type="hidden" name="tax_night" value="{{ tax_night|default('') }}">
+            <input type="hidden" name="loss_day" value="{{ loss_day|default(0)|round(2) }}">
+            <input type="hidden" name="loss_night" value="{{ loss_night|default(0)|round(2) }}">
+
+            <!-- Добавляем скрытые поля для каждой строки -->
+            {% for counter in recipies %}
+            <input type="hidden" name="modem_{{ counter.MODEM_ID }}" value="1">
+            <input type="hidden" name="loc_{{ counter.MODEM_ID }}" value="{{ counter.LOC }}">
+            <input type="hidden" name="email_{{ counter.MODEM_ID }}" value="{{ counter.E_MAIL }}">
+            <input type="hidden" name="t1_from_{{ counter.MODEM_ID }}" value="{{ counter.T1_FROM | round(2) }}">
+            <input type="hidden" name="t1_to_{{ counter.MODEM_ID }}" value="{{ counter.T1_TO | round(2) }}">
+            <input type="hidden" name="t1_cons_{{ counter.MODEM_ID }}" value="{{ counter.T1_CONS | round(2) }}">
+            <input type="hidden" name="t2_from_{{ counter.MODEM_ID }}" value="{{ counter.T2_FROM | round(2) }}">
+            <input type="hidden" name="t2_to_{{ counter.MODEM_ID }}" value="{{ counter.T2_TO | round(2) }}">
+            <input type="hidden" name="t2_cons_{{ counter.MODEM_ID }}" value="{{ counter.T2_CONS | round(2) }}">
+            <input type="hidden" name="summ_{{ counter.MODEM_ID }}" value="{{ counter.SUMM | round(2) }}">
+            <input type="hidden" name="summ_loss_{{ counter.MODEM_ID }}" value="{{ counter.SUMM_LOSS | round(2) }}">
+            {% endfor %}
+
+            <button type="submit">Сохранить в XLSX</button>
+        </form>
+
+        <form method="POST" action="/load" enctype="multipart/form-data" style="margin-top: 10px;">
+            <input type="file" name="file" accept=".xlsx" required>
+            <button type="submit">Загрузить из XLSX</button>
+        </form>
+    </div>
+</body>
+</html>
